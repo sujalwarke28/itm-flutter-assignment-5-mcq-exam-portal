@@ -1,0 +1,50 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isSignedIn() &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+
+    // users/{userId} is the one collection the Flutter client talks to
+    // directly (Firebase Auth + Firestore SDK, no backend round-trip for
+    // reading your own profile or signing up). Everything else — exams,
+    // questions, attempts — is only ever read or written by the Node
+    // backend via the Admin SDK, which bypasses these rules entirely, so
+    // those collections are locked to "no direct client access" below.
+    // That's the second half of "students can't read correctAnswer fields
+    // directly via client SDK": the questions fetch is both server-mediated
+    // (the /start endpoint strips it) AND blocked outright here.
+    match /users/{userId} {
+      allow read: if isSignedIn() && (request.auth.uid == userId || isAdmin());
+
+      // Self-signup must not be able to grant admin — role is always 'student' on create.
+      allow create: if isSignedIn() && request.auth.uid == userId &&
+        request.resource.data.role == 'student';
+
+      // Role is immutable from the client once set — promoting to admin is an out-of-band action.
+      allow update: if isSignedIn() && request.auth.uid == userId &&
+        request.resource.data.role == resource.data.role;
+
+      allow delete: if false;
+    }
+
+    match /exams/{examId} {
+      allow read, write: if false;
+
+      match /questions/{questionId} {
+        allow read, write: if false;
+      }
+    }
+
+    match /attempts/{attemptId} {
+      allow read, write: if false;
+    }
+  }
+}

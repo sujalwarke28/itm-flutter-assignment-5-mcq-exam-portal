@@ -1,0 +1,6 @@
+# Firebase CLI debug output
+firebase-debug.log
+.firebase/
+
+# OS
+.DS_Store
